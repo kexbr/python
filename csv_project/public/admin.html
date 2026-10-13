@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="ru">
+<!-- Вставь сюда ПОЛНОСТЬЮ тот HTML, который я кидал тебе в прошлом сообщении для index.html -->
+<!-- Только поменяй <h1>Список студентов</h1> на <h1>Панель Администратора</h1> -->
+<head>
+    <meta charset="UTF-8">
+    <title>Админка</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; max-width: 800px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
+        th { background-color: #fce4e4; }
+        .form-group { margin-bottom: 10px; }
+        .stats-box { background: #eef; padding: 10px; margin-top: 20px; border-radius: 5px; }
+    </style>
+</head>
+<body>
+    <h1 style="color: red;">Панель Администратора</h1>
+    <div class="form-group">
+        <input type="number" id="s_id" placeholder="ID" required>
+        <input type="text" id="s_name" placeholder="ФИО" required>
+        <input type="text" id="s_grades" placeholder="Оценки (пробел, - для пропуска)">
+        <button onclick="addStudent()">Добавить студента</button>
+    </div>
+    <table>
+        <thead>
+            <tr><th>ID</th><th>ФИО</th><th>Оценки</th><th>Ср. балл</th><th>Действия</th></tr>
+        </thead>
+        <tbody id="studentsTable"></tbody>
+    </table>
+    <div class="stats-box" id="statsBox"></div>
+
+    <script>
+        const ws = new WebSocket(`ws://${window.location.host}/ws`);
+        ws.onmessage = function(event) { if (event.data === "update") fetchStudents(); };
+
+        async function fetchStudents() {
+            const res = await fetch('/api/students');
+            const students = await res.json();
+            const tbody = document.getElementById('studentsTable');
+            tbody.innerHTML = '';
+            
+            students.forEach(s => {
+                const tr = document.createElement('tr');
+                const gradesStr = s.grades.map(g => g !== null ? g : '-').join(', ');
+                tr.innerHTML = `
+                    <td>${s.id}</td><td>${s.name}</td><td>${gradesStr}</td><td>${s.average.toFixed(2)}</td>
+                    <td><button onclick="deleteStudent(${s.id})">Удалить</button></td>
+                `;
+                tbody.appendChild(tr);
+            });
+            fetchStats();
+        }
+
+        async function fetchStats() {
+            const res = await fetch('/api/stats');
+            const stats = await res.json();
+            document.getElementById('statsBox').innerHTML = `
+                <p>Всего: ${stats.count} | Ср. балл: ${stats.overall_avg.toFixed(2)} | Лучший: ${stats.best || 'нет'} | Худший: ${stats.worst || 'нет'}</p>
+            `;
+        }
+
+        async function addStudent() {
+            const id = document.getElementById('s_id').value;
+            const name = document.getElementById('s_name').value;
+            const gradesStr = document.getElementById('s_grades').value;
+            const grades = gradesStr.split(' ').filter(v => v).map(v => v === '-' ? null : parseInt(v, 10));
+
+            const res = await fetch('/api/students', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: parseInt(id, 10), name: name, grades: grades })
+            });
+
+            if (!res.ok) {
+                const err = await res.json();
+                alert('Ошибка: ' + err.detail);
+            }
+        }
+
+        async function deleteStudent(id) {
+            if (!confirm('Точно удалить?')) return;
+            await fetch(`/api/students/${id}`, { method: 'DELETE' });
+        }
+        fetchStudents();
+    </script>
+</body>
+</html>
